@@ -13,12 +13,12 @@ pose = mp_pose.Pose(
     min_detection_confidence=0.5
 )
 
+
 # Caminho da imagem
 caminho_imagem = "images/test_pose2.jpg"
 
 
-
-"""Não alterar"""
+"""Não alterar - Área restrita"""
 # Detectar pessoa
 def det_person(image):
     results = yolo_model(image)
@@ -36,22 +36,27 @@ def extract_image(p):
 def analyse_pose(image):
     results = pose.process(image)
     if results.pose_landmarks:
-        landmarks = results.pose_landmarks.landmark
+        anglePose = keypoints_pose(results.pose_landmarks.landmark)
 
-        # Pontos chaves relevantes
-        hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP] # Femur
-        knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE] # Joelho
-        ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE] # Tornozelo
-
-        angle = angle_calc(hip,knee,ankle)
-
-        if angle >150:
+        # Tipo de pose baseada pelo ângulo
+        if anglePose > 150:
             return "Em pé"
         else:
             return "Sentada"
-        
         return "Não foi possível determinar"
 
+def keypoints_pose(l):
+    point = l
+    # Pontos chaves relevantes
+    hip = point[mp_pose.PoseLandmark.LEFT_HIP] # Femur
+    knee = point[mp_pose.PoseLandmark.LEFT_KNEE] # Joelho
+    ankle = point[mp_pose.PoseLandmark.LEFT_ANKLE] # Tornozelo
+
+    angle = angle_calc(hip,knee,ankle) 
+
+    return angle
+
+# Região de cálculos (Numpy)
 def angle_calc(p1,p2,p3):
     p1 = np.array([p1.x, p1.y])
     p2 = np.array([p2.x, p2.y])
@@ -62,10 +67,11 @@ def angle_calc(p1,p2,p3):
 
     cos_angle = np.dot(v1,v2)/(np.linalg.norm(v1) * np.linalg.norm(v2))
     angle = np.degrees(np.arccos(cos_angle))
-    
     return angle
 
-    
+"""Fim área restrita"""
+
+
 image = cv2.imread(caminho_imagem)
 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 pessoa = det_person(caminho_imagem)
