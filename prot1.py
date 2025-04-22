@@ -3,8 +3,10 @@ import mediapipe as mp
 import numpy as np
 from ultralytics import YOLO
 
+
 # Modelos
 yolo_model = YOLO('yolo11n.pt')
+yolo_clothes = YOLO('190plus_model.pt')
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=True,
@@ -15,7 +17,7 @@ pose = mp_pose.Pose(
 
 
 # Caminho da imagem
-caminho_imagem = "images/test_pose2.jpg"
+caminho_imagem = "images/davi.png"
 
 
 """Não alterar - Área restrita"""
@@ -24,6 +26,7 @@ def det_person(image):
     results = yolo_model(image)
     person_detections = [det for det in results[0].boxes.data if det[5] == 0]
     person_detections = extract_image(person_detections)
+    clothes = analyse_clothes(person_detections)
     posture = analyse_pose(person_detections)
     return posture
 # Extrai a região da imagem com a pessoa
@@ -32,6 +35,11 @@ def extract_image(p):
         x1, y1, x2, y2 = map(int, detection[:4])
         person_img = image[y1:y2, x1:x2]
     return person_img
+# Roupa
+def analyse_clothes(image):
+    return yolo_clothes(image)
+
+
 # Pose
 def analyse_pose(image):
     results = pose.process(image)
@@ -71,8 +79,9 @@ def angle_calc(p1,p2,p3):
 
 """Fim área restrita"""
 
-
+print("-----------------------Separação Início---------------------------")
 image = cv2.imread(caminho_imagem)
 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+print("------------------------Separação Pré detecção----------------------------")
 pessoa = det_person(caminho_imagem)
 print(pessoa)
