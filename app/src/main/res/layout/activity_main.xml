@@ -44,6 +44,24 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"/>
 
+    <!-- Botão para iniciar a classificação -->
+
+    <!-- Status da classificação -->
+
+    <TextView
+        android:id="@+id/classificationStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:layout_marginStart="16dp"
+        android:background="#80000000"
+        android:padding="8dp"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Classificação: Camiseta (95%)" />
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -65,11 +83,5 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintVertical_bias="0.5" />
 
-
     </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <!--    <ImageView-->
-    <!--        android:id="@+id/ivTop"-->
-    <!--        android:layout_width="match_parent"-->
-    <!--        android:layout_height="match_parent"/>-->
 </androidx.constraintlayout.widget.ConstraintLayout>
