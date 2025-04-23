@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
     private var allowDetection = true
 
     // Classificador de roupas
+    private val colorDetector = ColorDetector()
     private var clothingClassifier: ClothingClassifier? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isClassificationScheduled = false
@@ -310,28 +311,32 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
     ) {
         runOnUiThread {
             val topResult = results.firstOrNull()
+
+            // Detectar cor apenas se tivermos uma bounding box
+            val color = currentDetectedBoxes.firstOrNull()?.let { box ->
+                val clothingBox = RectF(box.x1, box.y1, box.x2, box.y2)
+                currentFrameBitmap?.let { bitmap ->
+                    colorDetector.detectDominantColor(bitmap, clothingBox)
+                }
+            } ?: "cor não detectada"
+
             val resultText = if (topResult != null) {
                 val confidencePercent = (topResult.confidence * 100).toInt()
-                "Classificação: ${topResult.className} ($confidencePercent%)"
+                "Roupa: ${topResult.className} ($confidencePercent%), Cor: $color"
             } else {
                 "Nenhuma classificação encontrada"
             }
 
             binding.classificationStatus.text = resultText
 
-            // Prepara a mensagem de voz
+            // Mensagem de voz combinando tipo e cor
             val speechText = if (results.isNotEmpty()) {
-                val formattedResults = results.take(2).joinToString(", ") {
-                    "${it.className} com ${(it.confidence * 100).toInt()}%"
-                }
-                "Classificação de roupa: $formattedResults"
+                "${topResult?.className} ${color.replace("claro", "de cor clara").replace("escuro", "de cor escura")}"
             } else {
                 "Não foi possível classificar a roupa"
             }
 
             tts.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, null)
-
-            // Resetar o estado para permitir nova classificação
             isClassificationScheduled = false
         }
     }
