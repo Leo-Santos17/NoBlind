@@ -58,12 +58,12 @@ class ColorDetector {
                 else -> "cinza"
             }
             hsv[0] in 0f..15f -> "vermelho"
-            hsv[0] in 15f..45f -> "laranja"
-            hsv[0] in 45f..70f -> "amarelo"
-            hsv[0] in 70f..160f -> "verde"
-            hsv[0] in 160f..260f -> "azul"
-            hsv[0] in 260f..290f -> "roxo"
-            hsv[0] in 290f..330f -> "rosa"
+            hsv[0] in 16f..45f -> "laranja"
+            hsv[0] in 46f..70f -> "amarelo"
+            hsv[0] in 71f..160f -> "verde"
+            hsv[0] in 161f..260f -> "azul"
+            hsv[0] in 261f..290f -> "roxo"
+            hsv[0] in 291f..330f -> "rosa"
             else -> "vermelho"
         } + when { // Adicionar luminosidade
             hsv[2] < 0.3 -> " escuro"

@@ -25,6 +25,8 @@ import androidx.core.content.ContextCompat
 import com.example.noblind.Constants.CLASSIFICATION_DELAY
 import com.example.noblind.Constants.CLOTHING_LABELS_PATH
 import com.example.noblind.Constants.CLOTHING_MODEL_PATH
+import com.example.noblind.Constants.CALCA_LABELS_PATH
+import com.example.noblind.Constants.CALCA_MODEL_PATH
 import com.example.noblind.Constants.LABELS_PATH
 import com.example.noblind.Constants.MODEL_PATH
 import com.example.noblind.databinding.ActivityMainBinding
@@ -32,7 +34,7 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingClassifier.ClassifierListener {
+class MainActivity : AppCompatActivity(), Detector.DetectorListener, GenericClassifier.ClassifierListener {
     private lateinit var binding: ActivityMainBinding
     private val isFrontCamera = false
 
@@ -48,13 +50,19 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
     // Camera
     private var allowDetection = true
 
-    // Classificador de roupas
+    // Classificadores
     private val colorDetector = ColorDetector()
-    private var clothingClassifier: ClothingClassifier? = null
+    private var clothingClassifier: GenericClassifier? = null
+    private var bottomClassifier: GenericClassifier? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isClassificationScheduled = false
     private var currentFrameBitmap: Bitmap? = null
     private var currentDetectedBoxes = listOf<BoundingBox>()
+
+    // Armazena os resultados de classificação
+    private var lastClothingResult: GenericClassifier.ClassificationResult? = null
+    private var lastBottomResult: GenericClassifier.ClassificationResult? = null
+    private var lastColorResult: String = ""
 
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var tts: TextToSpeech
@@ -71,7 +79,23 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
 
         cameraExecutor.execute {
             detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
-            clothingClassifier = ClothingClassifier(baseContext, CLOTHING_MODEL_PATH, CLOTHING_LABELS_PATH, this)
+
+            // Inicializa os classificadores
+            clothingClassifier = GenericClassifier(
+                baseContext,
+                CLOTHING_MODEL_PATH,
+                CLOTHING_LABELS_PATH,
+                this,
+                GenericClassifier.ClassifierType.CLOTHING
+            )
+
+            bottomClassifier = GenericClassifier(
+                baseContext,
+                CALCA_MODEL_PATH,
+                CALCA_LABELS_PATH,
+                this,
+                GenericClassifier.ClassifierType.BOTTOM
+            )
         }
 
         if (allPermissionsGranted()) {
@@ -106,6 +130,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
                 cameraExecutor.submit {
                     detector?.restart(isGpu = isChecked)
                     clothingClassifier?.restart(isGpu = isChecked)
+                    bottomClassifier?.restart(isGpu = isChecked)
                 }
                 if (isChecked) {
                     buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.orange))
@@ -125,7 +150,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
                 if (isPersonConsistentlyDetected) { // Só classifica se a pessoa ainda estiver sendo detectada
                     currentFrameBitmap?.let { bitmap ->
                         val clothingBox = currentDetectedBoxes
-                            .firstOrNull { it.clsName == "Pessoa" }
+                            .firstOrNull { it.clsName == "Pessoa"}
                             ?.let { box ->
                                 RectF(box.x1, box.y1, box.x2, box.y2)
                             }
@@ -133,7 +158,16 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
                         tts.speak("Classificando roupa", TextToSpeech.QUEUE_FLUSH, null, null)
                         binding.classificationStatus.text = "Classificando..."
 
+                        // Classificar roupa superior
                         clothingClassifier?.classify(bitmap, clothingBox)
+
+                        // Classificar roupa inferior (calças)
+                        bottomClassifier?.classify(bitmap, clothingBox)
+
+                        // Detectar cor
+                        clothingBox?.let { box ->
+                            lastColorResult = colorDetector.detectDominantColor(bitmap, box)
+                        }
                     } ?: run {
                         binding.classificationStatus.text = "Falha na captura de imagem"
                         tts.speak("Falha na captura de imagem", TextToSpeech.QUEUE_FLUSH, null, null)
@@ -243,7 +277,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
         super.onDestroy()
         detector?.close()
         clothingClassifier?.close()
+        bottomClassifier?.close()
         cameraExecutor.shutdown()
+        finishAffinity()
     }
 
     override fun onResume() {
@@ -289,7 +325,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
                     isPersonConsistentlyDetected = false
                 }
             }
-            if ("Pessoa" in currentObjects && !isClassificationScheduled && !isPersonConsistentlyDetected) {
+            if ("Pessoa" in currentObjects&& !isClassificationScheduled && !isPersonConsistentlyDetected) {
                 val currentTime = SystemClock.uptimeMillis()
                 if (currentTime - lastDetectionTime >= stabilizationDelay) {
                     isPersonConsistentlyDetected = true
@@ -304,40 +340,72 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener, ClothingCla
         }
     }
 
-    // Implementação do callback do classificador
+    // Implementação do callback do classificador genérico
     override fun onClassificationResults(
-        results: List<ClothingClassifier.ClassificationResult>,
-        inferenceTime: Long
+        results: List<GenericClassifier.ClassificationResult>,
+        inferenceTime: Long,
+        classifierType: GenericClassifier.ClassifierType
     ) {
         runOnUiThread {
             val topResult = results.firstOrNull()
 
-            // Detectar cor apenas se tivermos uma bounding box
-            val color = currentDetectedBoxes.firstOrNull()?.let { box ->
-                val clothingBox = RectF(box.x1, box.y1, box.x2, box.y2)
-                currentFrameBitmap?.let { bitmap ->
-                    colorDetector.detectDominantColor(bitmap, clothingBox)
+            when (classifierType) {
+                GenericClassifier.ClassifierType.CLOTHING -> {
+                    lastClothingResult = topResult
+                    updateClassificationUI()
                 }
-            } ?: "cor não detectada"
-
-            val resultText = if (topResult != null) {
-                val confidencePercent = (topResult.confidence * 100).toInt()
-                "Roupa: ${topResult.className} ($confidencePercent%), Cor: $color"
-            } else {
-                "Nenhuma classificação encontrada"
+                GenericClassifier.ClassifierType.BOTTOM -> {
+                    lastBottomResult = topResult
+                    updateClassificationUI()
+                }
+                else -> {
+                    // Outros tipos de classificadores podem ser adicionados aqui
+                }
             }
-
-            binding.classificationStatus.text = resultText
-
-            // Mensagem de voz combinando tipo e cor
-            val speechText = if (results.isNotEmpty()) {
-                "${topResult?.className} ${color.replace("claro", "de cor clara").replace("escuro", "de cor escura")}"
-            } else {
-                "Não foi possível classificar a roupa"
-            }
-
-            tts.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, null)
-            isClassificationScheduled = false
         }
+    }
+
+    // Método para atualizar a UI com os resultados de classificação
+    private fun updateClassificationUI() {
+        val clothingText = lastClothingResult?.let {
+            val confidencePercent = (it.confidence * 100).toInt()
+            "Superior: ${it.className} ($confidencePercent%)"
+        } ?: "Superior: não identificado"
+
+        val bottomText = lastBottomResult?.let {
+            val confidencePercent = (it.confidence * 100).toInt()
+            "Inferior: ${it.className} ($confidencePercent%)"
+        } ?: "Inferior: não identificado"
+
+        val colorText = if (lastColorResult.isNotEmpty()) {
+            "Cor: $lastColorResult"
+        } else {
+            "Cor: não identificada"
+        }
+
+        // Atualiza o texto na interface
+        binding.classificationStatus.text = "$clothingText\n$bottomText\n$colorText"
+
+        // Prepara o texto para o TTS
+        val speechTexts = mutableListOf<String>()
+
+        lastClothingResult?.let {
+            speechTexts.add("${it.className} ${lastColorResult.replace("claro", "de cor clara").replace("escuro", "de cor escura")}")
+        }
+
+        lastBottomResult?.let {
+            speechTexts.add("${it.className}")
+        }
+
+        // Fala os resultados
+        if (speechTexts.isNotEmpty()) {
+            val finalSpeechText = speechTexts.joinToString(" e ")
+            tts.speak(finalSpeechText, TextToSpeech.QUEUE_FLUSH, null, null)
+        } else {
+            tts.speak("Não foi possível classificar a roupa", TextToSpeech.QUEUE_FLUSH, null, null)
+        }
+
+        // Marca a classificação como concluída
+        isClassificationScheduled = false
     }
 }

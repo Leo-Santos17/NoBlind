@@ -19,11 +19,21 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 
-class ClothingClassifier(
+/**
+ * Um classificador genérico que pode ser usado com diferentes modelos TensorFlow Lite.
+ *
+ * @param context O contexto da aplicação
+ * @param modelPath O caminho para o arquivo do modelo TFLite no diretório assets
+ * @param labelPath O caminho para o arquivo de rótulos no diretório assets
+ * @param listener O listener que receberá os resultados da classificação
+ * @param classifierType O tipo do classificador (usado para diferenciar múltiplos classificadores)
+ */
+class GenericClassifier(
     private val context: Context,
-    private val modelPath: String = "clothing_classifier.tflite",
-    private val labelPath: String = "clothing_labels.txt",
-    private val listener: ClassifierListener
+    private val modelPath: String,
+    private val labelPath: String,
+    private val listener: ClassifierListener,
+    private val classifierType: ClassifierType
 ) {
     private var interpreter: Interpreter
     private var labels = mutableListOf<String>()
@@ -132,7 +142,7 @@ class ClothingClassifier(
         topResults.sortByDescending { it.confidence }
         val bestResults = topResults.take(topN)
 
-        listener.onClassificationResults(bestResults, inferenceTime)
+        listener.onClassificationResults(bestResults, inferenceTime, classifierType)
     }
 
     fun restart(isGpu: Boolean) {
@@ -167,8 +177,25 @@ class ClothingClassifier(
         val confidence: Float
     )
 
+    /**
+     * Interface para receber os resultados da classificação
+     */
     interface ClassifierListener {
-        fun onClassificationResults(results: List<ClassificationResult>, inferenceTime: Long)
+        fun onClassificationResults(
+            results: List<ClassificationResult>,
+            inferenceTime: Long,
+            classifierType: ClassifierType
+        )
+    }
+
+    /**
+     * Enum para identificar diferentes tipos de classificadores
+     */
+    enum class ClassifierType {
+        CLOTHING,   // Classificador de roupas superior
+        BOTTOM,     // Classificador de calças/roupas inferiores
+        COLOR,      // Classificador de cores
+        OTHER       // Outros tipos de classificadores
     }
 
     companion object {
